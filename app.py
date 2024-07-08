@@ -253,7 +253,6 @@ def upload_page():
     # Create a unique session ID if not exists
     if 'session_id' not in st.session_state:
         st.session_state.session_id = str(uuid.uuid4())
-        print(st.session_state.session_id)
 
     if uploaded_file is not None and uploaded_file != st.session_state.current_file:
         st.session_state.current_file = uploaded_file
@@ -450,7 +449,6 @@ def main():
     elif st.session_state.page == 'generate_quiz':
         generate_quiz_page()
     elif st.session_state.page == 'generate_summary':
-        print("go summary")
         generate_summary_page()
     elif st.session_state.page == 'quiz':
         quiz_page()
