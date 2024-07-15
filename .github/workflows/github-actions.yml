@@ -1,0 +1,65 @@
+name: generator-actions
+
+on:
+  push:
+    branches: [ master, development ]
+
+permissions: read-all
+jobs:
+  DeployGenerator:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Google Cloud Auth SVC account
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}'
+
+      - name: Terraform Init
+        run: cd .github && terraform init
+
+       # Checks that all Terraform configuration files adhere to a canonical format
+      - name: Terraform Format
+        run: cd .github && terraform fmt -diff 
+
+      - name: Terraform Validate
+        run: cd .github && terraform validate -json
+        env:
+          TF_VAR_projectid: ${{ vars.projectid }}
+          TF_VAR_pinecone: ${{ secrets.PINECONE_API_KEY }}
+          TF_VAR_email: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+
+      # Generates an execution plan for Terraform
+      - name: Terraform Plan
+        run: cd .github && terraform plan -input=false -out=plan 
+        env:
+          TF_VAR_projectid: ${{ vars.projectid }}
+          TF_VAR_pinecone: ${{ secrets.PINECONE_API_KEY }}
+          TF_VAR_email: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+
+      - name: Terraform Apply
+        run: cd .github && terraform apply -auto-approve -input=false
+        env:
+          TF_VAR_projectid: ${{ vars.projectid }}
+          TF_VAR_pinecone: ${{ secrets.PINECONE_API_KEY }}
+          TF_VAR_email: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+
+      - name: GCP Docker Build
+        run: gcloud builds submit --suppress-logs --default-buckets-behavior=REGIONAL_USER_OWNED_BUCKET --tag gcr.io/${{ vars.projectid }}/academic-generator
+       
+      - name: GCP Deploy
+        run: gcloud run deploy academic-generator --image gcr.io/${{ vars.projectid }}/academic-generator --allow-unauthenticated --cpu-throttling --region=asia-southeast1
+
+     
+
