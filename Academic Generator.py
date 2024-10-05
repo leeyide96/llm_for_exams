@@ -48,7 +48,7 @@ def cleanup_old_sessions(max_age=3600):  # max_age in seconds (1 hour)
 def cleanup_old_namespaces(max_age=1):
     """
     Remove old namespaces from Pinecone index DB.
-    
+
     Args:
         max_age (int): Maximum age of a session in days before it's removed. Default is 30 days.
     """
@@ -62,7 +62,7 @@ def cleanup_old_namespaces(max_age=1):
         age = current_time - latest_timestamp
         if age > max_age * 24 * 60 * 60:
             index.delete(namespace=namespace, delete_all=True)
-          
+
 
 def upload_page():
     """
@@ -141,26 +141,33 @@ def generate_quiz_page():
                 ["Your Custom Topics", "Generated Topics"], horizontal=True)
             if topic_type == "Your Custom Topics":
                 topic = st.text_input("Key in your own topics", max_chars=100,
-                                      placeholder="All Topics",
+                                      placeholder="Topic1, Topic2, Topic3",
                                       help="If there are multiple topics, use comma to separate them")
             else:
                 topic = st.selectbox("Topics",
                                      options=["All Topics"] + st.session_state.topics)
-            num_questions = st.number_input("Number of questions", min_value=1, max_value=20, value=5)
-            difficulty = st.select_slider("Difficulty", options=["Easy", "Medium", "Hard"], value="Medium")
             with st.form(key='quiz_form', border=False):
+                num_questions = st.number_input("Number of questions", min_value=1, max_value=20, value=5)
+                difficulty = st.select_slider("Difficulty", options=["Easy", "Medium", "Hard"], value="Medium")
                 submit_button = st.form_submit_button(label='Generate Quiz')
 
         if submit_button:
             st.info("Generating Quiz. Please Wait.")
             try:
-                st.session_state.update({"quiz": generate_quiz(st.session_state.pinecone_index, num_questions, difficulty, topic, st.session_state.docs),
+                quiz = {}
+                while not quiz:
+                    time.sleep(5)
+                    topic = "All Topics" if not topic else topic
+                    quiz = generate_quiz(st.session_state.pinecone_index, num_questions, difficulty, topic, st.session_state.docs)
+                    quiz = delete_invalid_question(quiz)[:num_questions]
+                st.session_state.update({"quiz": quiz,
                                          "current_question": 0,
                                          "score": None,
                                          "page": "quiz"})
                 st.success("Quiz Generated")
                 st.rerun()
             except Exception as e:
+                print(e)
                 st.error("There is some error. Please try again.")
             
     elif not st.session_state.pinecone_index and not st.session_state.docs:
@@ -188,18 +195,19 @@ def generate_summary_page():
                 ["Your Custom Topics", "Generated Topics"], horizontal=True)
             if topic_type == "Your Custom Topics":
                 topic = st.text_input("Key in your own topics", max_chars=100,
-                                                       placeholder="All Topics",
+                                                       placeholder="Topic1, Topic2, Topic3",
                                                        help="If there are multiple topics, use comma to separate them")
             else:
                 topic = st.selectbox("Topics", options=["All Topics"] + st.session_state.topics)
-            conciseness = st.select_slider("Conciseness", options=["Brief", "Detailed", "Verbose"], value="Detailed")
-            provide_layman = st.checkbox("Provide layman explanation")
             with st.form(key='summary_form', border=False):
+                conciseness = st.select_slider("Conciseness", options=["Brief", "Detailed", "Verbose"], value="Detailed")
+                provide_layman = st.checkbox("Provide layman explanation")
                 submit_button = st.form_submit_button(label='Generate Summary')
 
         if submit_button:
             status = st.empty()
             status.info("Generating Summary. Please Wait.")
+            topic = "All Topics" if not topic else topic
             st.session_state.summary = generate_summary(st.session_state.pinecone_index, topic, st.session_state.docs, conciseness, provide_layman)
             if st.session_state.summary:
                 st.session_state.page = 'summary'
@@ -221,7 +229,7 @@ def quiz_page():
     """
     Streamlit page for taking the quiz.
     """
-    st.title("Take Quiz", anchor=False)
+    st.title("Quiz", anchor=False)
     if st.session_state.quiz is not None:
         if st.session_state.score is None:
             st.session_state.score = [0] * len(st.session_state.quiz)
@@ -238,7 +246,7 @@ def quiz_page():
                     st.success("Correct!")
                     st.session_state.score[st.session_state.current_question] = 1
                 else:
-                    st.error(f"Incorrect. The correct answer is {question['correct_answer']}: {question['options'][question['correct_answer']]}")
+                    st.error(f"Incorrect. The correct answer is {question['correct_answer']}")
                 
                 st.write(f"Explanation: {question.get('explanation', '')}")
                 
@@ -256,7 +264,7 @@ def quiz_page():
             st.write(f"Your final score: {sum(st.session_state.score)} out of {len(st.session_state.quiz)}")
             all_answers = ""
             for i in range(len(st.session_state.quiz)):
-                all_answers += f"{i+1}. Question: {st.session_state.quiz[i]['question']} \n\n\t Answer: {st.session_state.quiz[i]['correct_answer']} - {st.session_state.quiz[i]['explanation']} \n\n"
+                all_answers += f"{i+1}. Question: {st.session_state.quiz[i]['question']} \n\n\t Answer: {st.session_state.quiz[i]['correct_answer']} - {st.session_state.quiz[i].get('explanation')} \n\n"
             st.markdown(all_answers)
             if st.button("End Quiz"):
                 st.write(f"Final Score: {st.session_state.score}/{len(st.session_state.quiz)}")
