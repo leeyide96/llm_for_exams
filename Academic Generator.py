@@ -79,8 +79,7 @@ def upload_page():
             st.write(f"Loading {uploaded_file.name}... ")
             with tempfile.TemporaryDirectory() as temp_dir:
                 file_path = os.path.join(temp_dir, uploaded_file.name)
-                
-                # Save the uploaded file
+
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getvalue())
                 file_hash = compute_file_hash(uploaded_file)
@@ -128,24 +127,37 @@ def generate_quiz_page():
     """
     Streamlit page for quiz generation.
     """
+
     st.title("Generate Quiz", anchor=False)
+    st.session_state.update({"topic": None,
+                             "topic_type": None})
     if st.session_state.pinecone_index and st.session_state.docs and st.session_state.quiz is None:
         if st.session_state.topics is None:
             st.session_state.topics = generate_topics(st.session_state.docs)
         st.subheader("Quiz Generation Options", anchor=False)
-        with st.form(key='quiz_form'):
+        with st.container(border=True):
+            topic_type = st.radio(
+                "Which one do you prefer? Your Custom Topics or Generated Topics?",
+                ["Your Custom Topics", "Generated Topics"], horizontal=True)
+            if topic_type == "Your Custom Topics":
+                topic = st.text_input("Key in your own topics", max_chars=100,
+                                      placeholder="All Topics",
+                                      help="If there are multiple topics, use comma to separate them")
+            else:
+                topic = st.selectbox("Topics",
+                                     options=["All Topics"] + st.session_state.topics)
             num_questions = st.number_input("Number of questions", min_value=1, max_value=20, value=5)
             difficulty = st.select_slider("Difficulty", options=["Easy", "Medium", "Hard"], value="Medium")
-            topic  = st.selectbox("Topics", options=["All Topics"] + st.session_state.topics)
-            submit_button = st.form_submit_button(label='Generate Quiz')
+            with st.form(key='quiz_form', border=False):
+                submit_button = st.form_submit_button(label='Generate Quiz')
 
         if submit_button:
             st.info("Generating Quiz. Please Wait.")
             try:
-                st.session_state.quiz = generate_quiz(st.session_state.pinecone_index, num_questions, difficulty, topic, st.session_state.docs)
-                st.session_state.current_question = 0
-                st.session_state.page = 'quiz'
-                st.session_state.score = None
+                st.session_state.update({"quiz": generate_quiz(st.session_state.pinecone_index, num_questions, difficulty, topic, st.session_state.docs),
+                                         "current_question": 0,
+                                         "score": None,
+                                         "page": "quiz"})
                 st.success("Quiz Generated")
                 st.rerun()
             except Exception as e:
@@ -170,18 +182,31 @@ def generate_summary_page():
         if st.session_state.topics is None:
             st.session_state.topics = generate_topics(st.session_state.docs)
         st.subheader("Summary Generation Options", anchor=False)
-        with st.form(key='summary_form'):
+        with st.container(border=True):
+            topic_type = st.radio(
+                "Which one do you prefer? Your Custom Topics or Generated Topics?",
+                ["Your Custom Topics", "Generated Topics"], horizontal=True)
+            if topic_type == "Your Custom Topics":
+                topic = st.text_input("Key in your own topics", max_chars=100,
+                                                       placeholder="All Topics",
+                                                       help="If there are multiple topics, use comma to separate them")
+            else:
+                topic = st.selectbox("Topics", options=["All Topics"] + st.session_state.topics)
             conciseness = st.select_slider("Conciseness", options=["Brief", "Detailed", "Verbose"], value="Detailed")
-            topic  = st.selectbox("Topics", options=["All Topics"]+st.session_state.topics)
             provide_layman = st.checkbox("Provide layman explanation")
-            submit_button = st.form_submit_button(label='Generate Summary')
+            with st.form(key='summary_form', border=False):
+                submit_button = st.form_submit_button(label='Generate Summary')
 
         if submit_button:
-            st.info("Generating Summary. Please Wait.")
+            status = st.empty()
+            status.info("Generating Summary. Please Wait.")
             st.session_state.summary = generate_summary(st.session_state.pinecone_index, topic, st.session_state.docs, conciseness, provide_layman)
-            st.session_state.page = 'summary'
-            st.success("Summary Generated")
-            st.rerun()
+            if st.session_state.summary:
+                st.session_state.page = 'summary'
+                status.success("Summary Generated")
+                st.rerun()
+            else:
+                status.error("Gemini Quota has reached. Please try again after awhile.")
     elif not st.session_state.pinecone_index and not st.session_state.docs:
         st.session_state.page = 'upload'
         st.info("Please upload DOCX file to start a new quiz.")
@@ -201,6 +226,7 @@ def quiz_page():
         if st.session_state.score is None:
             st.session_state.score = [0] * len(st.session_state.quiz)
         if st.session_state.current_question < len(st.session_state.quiz):
+            next_button_title = "Next Question" if st.session_state.current_question < len(st.session_state.quiz) - 1 else "Finish Quiz"
             question = st.session_state.quiz[st.session_state.current_question]
             st.subheader(f"Question {st.session_state.current_question + 1}", anchor=False)
             st.write(question['question'])
@@ -218,11 +244,11 @@ def quiz_page():
                 
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("Previous Question") and st.session_state.current_question > 0:
+                if st.session_state.current_question > 0 and st.button("Previous Question"):
                     st.session_state.current_question -= 1
                     st.rerun()
             with col2:
-                if st.button("Next Question"):
+                if st.button(next_button_title):
                     st.session_state.current_question += 1
                     st.rerun()
         else:
@@ -234,19 +260,19 @@ def quiz_page():
             st.markdown(all_answers)
             if st.button("End Quiz"):
                 st.write(f"Final Score: {st.session_state.score}/{len(st.session_state.quiz)}")
-                st.session_state.quiz = None
-                st.session_state.current_question = 0
-                st.session_state.score = None
+                st.session_state.update({"quiz": None,
+                                         "current_question": 0,
+                                         "score": None})
                 if st.session_state.session_id in pinecone_indexes:
                     del pinecone_indexes[st.session_state.session_id]
                 st.session_state.clear()
                 st.session_state.page = 'upload'
                 st.rerun()
             if st.button("Generate New Quiz"):
-                st.session_state.quiz = None
-                st.session_state.current_question = 0
-                st.session_state.score = None
-                st.session_state.page = 'generate_quiz'
+                st.session_state.update({"quiz": None,
+                                         "current_question": 0,
+                                         "score": None,
+                                         "page": "generate_quiz"})
                 st.rerun()
 
 
@@ -264,8 +290,8 @@ def summary_page():
             mime="text/plain"
         )
         if st.button("Generate New Summary"):
-            st.session_state.summary = None
-            st.session_state.page = 'generate_summary'
+            st.session_state.update({"summary": None,
+                                     "page": "generate_summary"})
             st.rerun()
         if st.button("Back to Upload"):
             if st.session_state.session_id in pinecone_indexes:
@@ -281,39 +307,25 @@ def main():
         st.session_state.session_id = str(uuid.uuid4())
     if 'page' not in st.session_state or pinecone_indexes.get(st.session_state.session_id) is None:
         st.session_state.page = 'upload'
-    if 'current_file' not in st.session_state:
-        st.session_state.current_file = None
-    if 'pinecone_index' not in st.session_state:
-        st.session_state.pinecone = None
-    if 'namespace' not in st.session_state:
-        st.session_state.namespace = None
-    if 'docs' not in st.session_state:
-        st.session_state.docs = None
-    if 'quiz' not in st.session_state:
-        st.session_state.quiz = None
-    if 'current_question' not in st.session_state:
-        st.session_state.current_question = 0
-    if 'score' not in st.session_state:
-        st.session_state.score = None
-    if 'summary' not in st.session_state:
-        st.session_state.summary = None
-    if 'topics' not in st.session_state:
-        st.session_state.topics = None
-    if 'reindex' not in st.session_state:
-        st.session_state.reindex = False
 
+    states = {"current_file", "pinecone_index", "namespace", "docs", "quiz",
+              "current_question", "score", "summary", "topics", "reindex"}
+    existing_states = st.session_state.keys()
+    new_states = states - existing_states
+    for state in new_states:
+        value = None
+        if state == "current_question":
+            value = 0
+        elif state == "reindex":
+            value = False
+        st.session_state[state] = value
 
     # Page routing
-    if st.session_state.page == 'upload':
-        upload_page()
-    elif st.session_state.page == 'generate_quiz':
-        generate_quiz_page()
-    elif st.session_state.page == 'generate_summary':
-        generate_summary_page()
-    elif st.session_state.page == 'quiz':
-        quiz_page()
-    elif st.session_state.page == 'summary':
-        summary_page()
+    page_functions = {"upload": upload_page, "generate_quiz": generate_quiz_page,
+                      "generate_summary": generate_summary_page, "quiz": quiz_page,
+                      "summary": summary_page}
+    to_run = page_functions[st.session_state.page]
+    to_run()
 
 if __name__ == "__main__":
     main()
