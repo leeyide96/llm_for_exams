@@ -8,3 +8,18 @@ You can also simply set up this web application locally but you must still ensur
 3. Ensure that the service account has the following roles: Secret Manager Secret Accessor, Cloud Run Admin, Cloud Build Editor, Storage Admin, Storage Object Admin and Vertex AI administrator. These roles are at the highest access so feel free to reduce the access level
 4. Place the credentials and relevant information in Github Secret variables: GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_SERVICE_ACCOUNT and PINECONE_API_KEY.
 5. Type down your project id in Github repository variables: PROJECTID
+6. Create GCP Cloud Storage Bucket for terraform state and rename the bucket name in backend.tf
+
+#### Snapshots of Academic Generator
+
+##### Generate Quiz Options
+![Alt text](snapshots/quiz_options.png "Quiz Options")
+
+##### Quiz Question
+![Alt text](snapshots/quiz.png "Quiz")
+
+##### Generate Summary Options
+![Alt text](snapshots/summary_options.png "Summary Options")
+
+##### Summary
+![Alt text](snapshots/summary.png "Summary")
